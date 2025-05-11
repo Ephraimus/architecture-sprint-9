@@ -1,0 +1,45 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+' ==== Пользователи и внешние системы ====
+System_Ext(partner_cc, "Партнёрский кол-центр", "Получает ставки через файл (SFTP)")
+
+' ==== Существующая АБС (затронутая система) ====
+System_Boundary(ABS, "Автоматизированная банковская система (АБС)") {
+    ContainerDb(ABS_db, "База данных", "Oracle", "База данных АБС")
+    Container(ABS_back, "АБС", "Delphi", "Обработка заявок, управление ставками")
+
+    Rel(ABS_back, ABS_db, "Запись / Чтение данных", "SQL / TCP")
+}
+
+' ==== Kafka (общая шина сообщений) ====
+SystemQueue(response_queue, "Kafka", "Очередь сообщений")
+
+' ==== Rate Service (новая система) ====
+System_Boundary(rate_service_zone, "Rate Service") {
+    Container(rate_adapter, "ABS Adapter", "PHP", "Получает ставки из АБС (REST/JDBC), TTL 1 мин, подписан на Kafka (RateChanged)")
+    Container(rate_api, "Internal Rates API", "PHP", "REST API /api/v1/rates/current для Internal Call Center")
+    Container(rate_exporter, "File Exporter", "PHP", "Формирует CSV/Excel и выгружает на SFTP")
+    ContainerDb(rate_cache, "In-memory Cache", "Memory", "Кэш ставок на 1 минуту")
+}
+
+' ==== Internal Call Center System (существующий контейнер) ====
+System_Boundary(system_call, "Система кол-центра") {
+    Container(system_call_back, "бэкенд cистемы кол-центра", "Java Spring Boot", "Обработка заявок, запрос ставок по REST")
+}
+
+
+' ==== Связи Rate Service ====
+Rel_R(ABS_back, response_queue, "Публикация события RateChanged", "Async / Kafka")
+Rel(response_queue, rate_adapter, "Получение события RateChanged", "Async / Kafka")
+
+Rel_U(rate_adapter, rate_cache, "Кэширование ставок", "in-memory")
+Rel(rate_api, rate_cache, "Чтение ставок", "in-memory")
+Rel_D(rate_exporter, rate_adapter, "Получение ставок перед экспортом", "internal")
+Rel(partner_cc, rate_exporter, "Загрузка файла ставок с SFTP", "SFTP / CSV, Excel")
+Rel(system_call_back, rate_api, "Получение ставок /api/v1/rates/current", "REST / HTTPS")
+
+@enduml
