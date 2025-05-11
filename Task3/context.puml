@@ -1,0 +1,49 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+Person_Ext(client, "Клиента сайта", "Просматривает продукты и подаёт заявку на депозит через сайт")
+Person_Ext(client_bank, "Клиент интернет банка", "Авторизуется и открывает депозит онлайн")
+Person(operator, "Менеджер кол-центра", "Обзванивает клиента и подтверждает заявку")
+Person(manager, "Менеджер по депозитам", "Управляет ставками и обрабатывает заявки в АБС")
+Person(manager_front, "Менеджер отделения банка", "Проводит очную идентификацию клиента")
+
+System_Boundary(core, "Система онлайн открытия депозитов") {
+    System(site, "Сайт", "Клиентский веб-интерфейс подачи заявок")
+    System(system_call, "Система кол-центра", "Работа менеджеров с заявками")
+    System(bank_site, "Интернет-банк", "Онлайн-кабинет клиента")
+    System(ABS, "Автоматизированная банковская система (АБС)", "Обработка заявок и управление ставками")
+    System(service_sms, "СМС-шлюз телеком-оператора", "Передача SMS-уведомлений")
+    System(response_queue, "Kafka", "Шина событий для обработки заявок и ставок")
+    System(rate_parser, "Сервис парсинга ставок", "Получение актуальных ставок с сайта ЦБ и обновление в АБС")
+}
+
+System_Ext(cbr_site, "Сайт ЦБ РФ", "Источник официальных ставок")
+System_Ext(sms_gateway, "Телеком-оператор sms", "Передача SMS клиентам")
+
+' === Взаимодействия ===
+Rel(client, site, "Подаёт заявку на депозит через сайт", "HTTPS")
+Rel(client_bank, bank_site, "Оформляет депозит через интернет-банк", "HTTPS")
+Rel(operator, system_call, "Работает с заявками", "HTTPS")
+Rel(manager, ABS, "Управляет ставками и обрабатывает заявки", "UI / HTTP")
+Rel(manager_front, ABS, "Проводит очную идентификацию клиента", "UI / HTTP")
+
+Rel(site, system_call, "Передаёт заявки", "REST / HTTPS")
+Rel(system_call, response_queue, "Публикует заявки", "Async / Kafka")
+Rel(bank_site, response_queue, "Публикует заявки и запрашивает ставки", "Async / Kafka")
+Rel(response_queue, ABS, "Доставляет заявки", "Async / Kafka")
+Rel(ABS, response_queue, "Публикует ставки", "Async / Kafka")
+Rel(response_queue, bank_site, "Поставляет ставки", "Async / Kafka")
+Rel(response_queue, site, "Поставляет ставки", "Async / Kafka")
+
+Rel(ABS, service_sms, "Отправка SMS", "REST / HTTPS")
+Rel(service_sms, sms_gateway, "Передача SMS", "REST / HTTPS")
+Rel(sms_gateway, client, "Получает SMS", "SMS")
+Rel(sms_gateway, client_bank, "Получает SMS", "SMS")
+
+Rel(rate_parser, cbr_site, "Получает ставки", "HTTPS")
+Rel(rate_parser, ABS, "Передаёт ставки", "REST / HTTPS")
+
+@enduml

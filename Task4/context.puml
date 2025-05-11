@@ -1,0 +1,26 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+' ==== Внешние акторы ====
+Person_Ext(partner_cc, "Партнёрский кол-центр", "Получает файл ставок с SFTP и обновляет локальную базу")
+Person_Ext(system_call_operator, "Оператор кол-центра", "Запрашивает текущие ставки через интерфейс")
+
+' ==== Системы ====
+System(ABS, "Автоматизированная банковская система (АБС)", "Источник актуальных ставок")
+System(Kafka, "Kafka", "Шина событий")
+System(rate_service, "Rate Service", "Промежуточный сервис для экспорта ставок и REST API")
+System(system_call, "Система кол-центра", "Внутренний колл-центр, использующий API Rate Service")
+
+' ==== Связи ====
+Rel(ABS, Kafka, "Публикация события RateChanged", "Async / Kafka")
+Rel(Kafka, rate_service, "Обработка события RateChanged", "Async / Kafka")
+
+Rel_U(system_call, rate_service, "Запрос актуальных ставок через API", "REST / HTTPS")
+Rel_D(rate_service, partner_cc, "Формирует и выгружает файл ставок на SFTP", "CSV / SFTP")
+
+Rel(system_call_operator, system_call, "Работает с заявками и ставками", "UI")
+
+@enduml
